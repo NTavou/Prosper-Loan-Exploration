@@ -1,0 +1,1492 @@
+Loan Exploration by Nikos Tavoularis
+========================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+
+rm(list = ls())
+library(ggplot2)
+library(knitr)
+library(dplyr)
+library(lubridate)
+library(forcats)
+library(descr)
+library(grid)
+library(gridExtra)
+
+```
+
+This report explores a loan dataset that comes from [Prosper](https://www.prosper.com/) 
+which is a marketplace lending platform. More specifically, [Prosper Marketplace](https://en.wikipedia.org/wiki/Prosper_Marketplace)
+is America's  first peer-to-peer lending marketplace, with over $7 billion in 
+funded loans. Borrowers request personal loans on Prosper and investors 
+(individual or institutional) can fund them. Investors can consider borrowers’ 
+credit scores, ratings, and histories and the category of the loan. Prosper 
+handles the servicing of the loan and collects and distributes borrower payments 
+and interest back to the loan investors.
+
+
+The data set contains almost 114,000 
+loans and 81 variables, including loan amount, borrower rate (or interest rate), 
+current loan status, borrower income, borrower employment status, borrower 
+credit history, the latest payment information among others. A full list of the 
+variables can be found [here](https://docs.google.com/spreadsheets/d/1gDyi_L4UvIrLTEC6Wri5nbaMmkGmLQBk-Yx3z0XDEtI/edit#gid=0).
+
+
+
+
+```{r echo=FALSE, results='hide', Load_the_Data}
+
+PLD <- read.csv("prosperLoanData.csv", sep = ",",  header=T, 
+                na.strings=c("","NA"))
+str(PLD)
+```
+
+# Univariate Plots Section
+
+Let's firstly check the distribution of loan origination through the years.
+
+```{r echo=FALSE, Date_of_Initiation_A}
+
+PLD[,3] <- as.Date(PLD[,3])
+
+barplot(table(year(PLD[,3])), xlab="Years")
+
+table(year(PLD[,3]))
+
+range(PLD$ListingCreationDate)
+
+nrow(PLD)
+```
+
+The dataset contains 113.937 loans from November 2005 till March 2014. Most 
+loans were originated in 2013. If we zoom in a little bit in our diagram...
+
+```{r echo=FALSE, Date_of_Initiation_B}
+
+ggplot(PLD, aes(x=ListingCreationDate)) + 
+  geom_bar() + 
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y")
+
+```
+
+...we can notice that there is a gap in the data in late 2008. There is a clear 
+explanation about this issue. In the wikipedia PROSPER [article](https://en.wikipedia.org/wiki/Prosper_Marketplace) 
+we are informed that “the SEC imposed a cease and desist order on Prosper” from 
+the end of November 2008 till July 2009. 
+
+But what is the status of each loan in the dataset?  
+
+```{r echo=FALSE, Loan_Status}
+
+ggplot(PLD, aes(x=LoanStatus)) + 
+  geom_bar() + 
+  coord_flip()
+
+round(table(PLD$LoanStatus) / nrow(PLD) * 100, 1)
+```
+
+Almost half the loans are still in progress and 1/3 of loans are completed.
+
+Let's examine the credit rating of loans when they went live. To measure the 
+credit rating we can use the Credit Grade variable. This variable is populated 
+only for listings before 2009 (before the SEC cease). The [Credit Grade](https://www.prosper.com/Downloads/Services/Documentation/ProsperAPI_Objects_Details.html) 
+is expressed in an alphabetical grade scale where AA is the best possible credit 
+rating for a loan taker and HR is the worst possible rating (NC means No Credit).
+
+```{r echo=FALSE, Credit_Grade}
+
+positions_CreditGrade <- c('AA', 'A', 'B', 'C', 'D', 'E', 'HR', 'NC')
+
+ggplot(subset(PLD, !is.na(CreditGrade)), aes(x=CreditGrade, na.rm=TRUE)) + 
+  geom_bar() + 
+  scale_x_discrete(limits = positions_CreditGrade)
+
+table(PLD$CreditGrade, useNA = 'always')
+
+```
+
+Most loan takers before 2009 had a credit rating of C and D. Note that we 
+removed NA's from the graph because essenially NA's in the Credit Grade variable 
+correspond to loan takers after July 2009.
+
+As for the loan takers after July 2009 we are going to use the ProsperRating 
+(Alpha) variable. The ProsperRating is a proprieatary system developped by 
+PROSPER after the SEC cease that ["allows potential investors to easily consider 
+a loan application’s level of risk because the rating represents an estimated 
+average annualized loss rate range to the investor."](https://www.prosper.com/plp/invest/prosper-ratings/)
+So it seems reasonable to use it for measuring the credit risk of each loan taker 
+as it fulfils the same role as the Credit Grade variable.
+
+```{r echo=FALSE, Prosper_Rating}
+
+positions_ProsperRating <- c('AA', 'A', 'B', 'C', 'D', 'E', 'HR')
+
+ggplot(subset(PLD, !is.na(ProsperRating..Alpha.)), 
+       aes(x=ProsperRating..Alpha.), na.rm=TRUE) + 
+  geom_bar() +
+  scale_x_discrete(limits = positions_ProsperRating)
+  
+table(PLD$ProsperRating..Alpha., useNA = 'always')
+
+```
+
+
+The  Prosper Rating follows a similar grading scale as the Credit Rating. 
+
+Most loan takers after 2009 had a credit rating of B and C and few loan takers 
+had a credit rating of AA.
+
+What is the most common term of a PROSPER loan?
+
+```{r echo=FALSE, Duration_of_Loan}
+
+PLD$Term <- factor(PLD$Term)
+
+ggplot(subset(PLD, !is.na(Term)), aes(x=Term, na.rm=TRUE)) + 
+  geom_bar(width=0.6) + 
+  scale_x_discrete()
+
+round(table(PLD$Term)/nrow(PLD) * 100, 1)
+
+```
+
+77% of all loans has a 36 months term in the PROSPER marketplace.
+
+Now lets check the distribution of loan amounts:
+
+```{r echo=FALSE, Loan_Amount}
+
+ggplot(PLD, aes(x=LoanOriginalAmount)) + 
+  geom_histogram(binwidth = 1000) + 
+  scale_x_continuous(breaks = c(5000, 10000, 15000, 20000, 25000, 30000, 35000))
+
+summary(PLD$LoanOriginalAmount)
+round(table(cut(PLD$LoanOriginalAmount, seq(0, 35000, 5000),
+                include.lowest=TRUE))/nrow(PLD) * 100, 1) 
+sort(table(PLD$LoanOriginalAmount),decreasing = TRUE)[1:10]
+sum(PLD$LoanOriginalAmount)
+
+```
+
+The minimum loan amount is \$1000 and the maximum amount $35000.
+The mean loan amount is \$8337 and the median is \$6500. 
+45.5% of loans are loans between \$1000 and \$4000 and only 0.4% of loans are for
+amounts above $30000.
+The most common loan amount (the mode of the distribution) is \$4000.
+As a result the distribution of loan amounts is skewed to the right. It is also
+interesting to note that the distribution exhibits many other peaks at
+\$15.000, \$10.000, \$20.000 and \$25.000 which is normal because usually people 
+tend to borrow in multiple of thousand. 
+Total value of loan amounts funded by the PROSPER market place in the examined 
+dataset is approximately $950 million.
+
+But what is the reason specified by loan takers for asking the loan?
+
+```{r echo=FALSE, Listing_Category}
+
+# We factorize the ListingCategory...numeric variable to better graph it's 
+# distribution
+PLD$ListingCategory..numeric. <- factor(PLD$ListingCategory..numeric.)
+
+PLD$ListingCategory..numeric. <- recode(PLD$ListingCategory..numeric., 
+                                        "0" = "NA", 
+                                        "1" = "Debt Consolidation", 
+                                        "2" = "Home Improvement", 
+                                        "3" = "Business", 
+                                        "4" = "Personal Loan", 
+                                        "5" = "Student Use", 
+                                        "6" = "Auto", 
+                                        "7" = "Other", 
+                                        "8" = "Baby&Adoption", 
+                                        "9" = "Boat", 
+                                        "10" = "Cosmetic Procedure", 
+                                        "11" = "Engagement Ring", 
+                                        "12" = "Green Loans", 
+                                        "13" = "Household Expenses", 
+                                        "14" = "Large Purchases", 
+                                        "15" = "Medical/Dental", 
+                                        "16" = "Motorcycle", 
+                                        "17" = "RV", 
+                                        "18" = "Taxes", 
+                                        "19" = "Vacation", 
+                                        "20" = "Wedding Loans")
+
+ggplot(PLD, aes(fct_infreq(ListingCategory..numeric.))) + 
+  geom_bar() + 
+  theme(axis.text.x=element_text(angle = 90, hjust = 0))
+
+summary(PLD$ListingCategory..numeric.)
+
+```
+
+Most loan takers use the PROSPER platform for debt [consolidation](http://www.investopedia.com/terms/d/debtconsolidation.asp).
+Many people don't specify the category of their loan (NA option).
+The third most popular listing selection by loan takers is "other". 
+"Home improvement" and "Business" come in fourth and fifth place. 
+
+What is the occupation of loan takers?
+
+```{r echo=FALSE, Occupation}
+
+isolate_occupation <- PLD %>% 
+  group_by(Occupation) %>% 
+  summarise(count_n = length(Occupation))
+sorted_occupations <- arrange(isolate_occupation, desc(count_n))
+top_one_third_occupations <- sorted_occupations[1:23,]
+
+# This function fetches the required x labels needed for plotting the graph 
+# of loan takers' occupations 
+get_x_labels <- function(x){
+  return(unlist(lapply(x[1], as.character)))
+  }
+
+ggplot(top_one_third_occupations, aes(x=Occupation, y=count_n)) + 
+  geom_bar(stat = "identity") +
+  theme(axis.text.x=element_text(angle = 90, hjust = 0)) +
+  scale_x_discrete(limits = get_x_labels(top_one_third_occupations))
+
+length(unique(PLD$Occupation))
+round(sort(table(PLD$Occupation), 
+           decreasing = TRUE)[1:10] / nrow(PLD) * 100, 1)
+round(sum(
+  top_one_third_occupations[2]) / sum(sorted_occupations[2]) * 100, 1) 
+
+```
+ 
+There are 68 different occupations selected in the dataset by the loan takers. 
+Most popular categories by a large margin are "Other" and "Professional" which 
+are not terribly useful for our analysis since they are too generic. Computer 
+Programmer is the third most common selection as can be seen from the graph, 
+Executive came in the fourth place and Teacher in the fifth.
+86.2% of answers about Occupation fall in the top 1/3 of answers. The barplot of 
+top 1/3 of anwers is depicted in the graph above. 
+
+The income range of loan takers could probably be a useful variable to explore:
+
+
+```{r echo=FALSE, IncomeRange}
+
+positions_IncomeRange <- c("$0", "$1-24,999", "$25,000-49,999", 
+                           "$50,000-74,999", "$75,000-99,999", "$100,000+", 
+                           "Not employed", "Not displayed")
+
+ggplot(PLD, aes(x = IncomeRange)) + 
+  geom_bar() + 
+  theme(axis.text.x=element_text(angle = 90, hjust = 0)) +
+  scale_x_discrete(limits = positions_IncomeRange)
+
+group_IncomeRange <- PLD %>% 
+  group_by(IncomeRange) %>% 
+  summarise(count_n = length(IncomeRange))
+
+k = arrange(group_IncomeRange, desc(count_n))
+transform(k, perc = round(count_n / nrow(PLD) * 100, 1))
+
+```
+
+Most people in the dataset have an income that ranges between 
+\$25.000 and \$75.000. According to this wikipedia [article](https://en.wikipedia.org/wiki/Personal_income_in_the_United_States) 
+only the top 9.15% of U.S population had a personal income larger than $100.000 
+in 2016. So, it is somehow strange that the third most common income range 
+category for loan takers is high income people (+$100.000). 
+
+To conclude this section we are going to plot three more variables that may be 
+useful in the analysis that will follow: Recommendations, 
+InvestmentFromFriendsCount and Investors.
+
+```{r echo=FALSE, Recommendations}
+
+# We factorize the Reccomendations variable to better graph it's 
+# distribution
+PLD$Recommendations <- factor(PLD$Recommendations)
+
+recc_drop_zeros <- subset(PLD, Recommendations != "0") 
+
+ggplot(recc_drop_zeros, aes(x=Recommendations)) + 
+  geom_bar() + 
+  stat_count(aes(label=..count..), vjust=0, geom="text", position="identity")
+
+no_recc <- round(
+  nrow(filter(PLD, Recommendations == "0")) / nrow(PLD) * 100, 1)
+no_recc
+100 - no_recc
+round(table(
+  recc_drop_zeros$Recommendations) / nrow(recc_drop_zeros) * 100, 1)
+
+```
+
+Only 3.7% of loan takers had a recommendation when they posted their listing.
+From those people the large majority (3.516 or 82.6%) had only one 
+recommendation. 
+
+
+
+```{r echo=FALSE, Investment_from_Friends}
+
+# We factorize the InvestmentFromFriendsCount variable to better graph it's 
+# distribution
+PLD$InvestmentFromFriendsCount <- factor(PLD$InvestmentFromFriendsCount)
+
+inv_from_friends_drop_zero <- subset(PLD, InvestmentFromFriendsCount != "0")
+
+ggplot(inv_from_friends_drop_zero, aes(x=InvestmentFromFriendsCount)) + 
+  geom_bar() +
+  stat_count(aes(label=..count..), vjust=0, geom="text", position="identity")
+
+no_inv <- round(nrow(filter(PLD, InvestmentFromFriendsCount == "0")) 
+                / nrow(PLD) * 100, 1)
+no_inv
+100 - no_inv
+round(table(inv_from_friends_drop_zero$InvestmentFromFriendsCount) 
+      / nrow(inv_from_friends_drop_zero) * 100, 1)
+
+```
+
+Less than 2% of loan takers had friends investing on their loan. The most 
+common friend count was one person (86.1%).
+
+
+```{r echo=FALSE, Investors}
+
+# We drop 1 investor count, otherwise other categories wouldn't be 
+#visible
+investors_drop_one <- subset(PLD, Investors != 1)
+
+ggplot(investors_drop_one, aes(x=Investors)) + 
+  geom_bar()
+
+summary(PLD$Investors)
+round(sort(table(PLD$Investors),decreasing = TRUE)[1:10] / nrow(PLD) * 100, 2) 
+table(cut(PLD$Investors, seq(0, 1200, 100),include.lowest=TRUE))
+round(table(cut(PLD$Investors, seq(0, 1200, 100),
+                include.lowest=TRUE))/nrow(PLD) * 100, 3) 
+
+```
+
+Almost 1/4 of loans were funded by a single investor. The distribution of 
+investor number per loan is heavily skewed to the right (note that 1 
+investor per loan category is omitted, otherwise other categories wouldn't be 
+visible). 71.5% of loans were funded by less than 100 investors and only 4 loans 
+had more than 1000 investors.
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+As it was mentioned in the beginning of this project the data set contains 
+113.937 loans and 81 variables, including loan amount, borrower rate 
+(or interest rate), current loan status, borrower income, borrower employment 
+status, borrower credit history, the latest payment information among others.
+
+### What is/are the main feature(s) of interest in your dataset?
+
+It is interesting to explore which variables can help potential investors 
+avoid loan takers that most likely will default on their loan. Also, I am 
+curious to check if the behavior and characterics of loan takers changed after 
+the financial crisis of 2008 in the PROSPER platform.
+
+### What other features in the dataset do you think will help support your \
+investigation into your feature(s) of interest?
+
+It is not possible to explore all the variables in this dataset due to time 
+constraints, so I chose 12 supporting variables that were presented in the 
+univariate plots section in order to conduct my anlysis against the features 
+of interest, namely:
+
+* ListingCreationDate  
+* LoanStatus  
+* CreditGrade  
+* ProsperRating..Alpha.  
+* Term  
+* LoanOriginalAmount  
+* ListingCategory..numeric  
+* Occupation  
+* IncomeRange  
+* Recommendations   
+* InvestmentFromFriendsCount   
+* Investors  
+
+### Did you create any new variables from existing variables in the dataset?
+
+I created four new variables in the bivariate plots section. The first one 
+classifies loans as defaulted and non-defaulted. The second one groups listings
+by year of initiation. The third one combines the CreditGrade and the 
+ProsperRating...Alpha. variables into a single variable. And the last one
+splits the Investors variable in ten categories.  
+
+In the multivariate plots section I created a variable that divides the 
+dataset in two time periods. The first period contains listings up until 2008.
+The second one covers listings from 2009 and onwards. 
+
+### Of the features you investigated, were there any unusual distributions? \
+Did you perform any operations on the data to tidy, adjust, or change the form \
+of the data? If so, why did you do this?
+
+The LoanOriginalAmount distibution is heavily skewed to the right, which is not 
+what I expected. I originally thought that loan amounts would be centered around
+\$5.000 - \$10.0000 not below $5.000 as they actually do.
+
+I changed the data type of the following variables:
+
+* ListingCategory..numeric
+* Reccomendations 
+* InvestmentFromFriendsCount
+
+from numeric to factor to better visualize their distribution.
+
+# Bivariate Plots Section
+
+We will create a new variable that classifies loans as defaulted and non 
+defaulted. We are going to use the LoanStatus variable to achive that. As a 
+reminder the LoanStatus variable with its loan type counts is depicted below.
+
+```{r echo=FALSE, Loan_Status_with_counts}
+
+ggplot(PLD, aes(x=LoanStatus)) + 
+  geom_bar() + 
+  stat_count(aes(label=..count..), vjust=0, geom="text", position="identity") +
+  theme(axis.text.x=element_text(angle = 90, hjust = 0))
+
+nrow(filter(PLD, LoanStatus == "Completed" | LoanStatus == "Defaulted" | 
+              LoanStatus == "Chargedoff" ))
+
+```
+
+We will name the new variable as Defaulted and it will take only two values: 
+either "Yes"" or "No". We will include to the "Yes" category the Defaulted and 
+[Chargedoff](https://www.investopedia.com/terms/c/chargeoff.asp) loans from the 
+LoanStatus variable and to the "No" category the Completed loans of the same 
+variable. We will omit the other categories from the LoanStatus variable because 
+we don't know their outcome yet (if the loan will default or not). 
+
+```{r echo=FALSE, results='hide', Defaulted_variable_creation}
+
+PLD_def_or_no <- filter(PLD, LoanStatus %in% c("Chargedoff", 
+                                               "Defaulted", "Completed"))
+
+PLD_def_or_no <- mutate(PLD_def_or_no, Defaulted = as.factor(ifelse(
+		(LoanStatus %in% c("Chargedoff", "Defaulted")), "Yes", "No")))
+		  
+```
+
+As a consequence we will drop the data for all loans that don't belong to the 
+aforementioned categories. The total number of loans that we are going to work 
+with is 55.084. Let's have a first look at the percentage of defaulted loans in 
+the newly created dataset:
+
+```{r echo=FALSE, Loan_Status_new_dataset}
+
+positions_Defaulted <- c("Yes", "No")
+
+ggplot(PLD_def_or_no, aes(x=Defaulted, fill=Defaulted)) + 
+  scale_x_discrete(limits = positions_Defaulted) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), width = 0.4) +
+  geom_text(aes(y = ((..count..)/sum(..count..)), 
+                label = scales::percent((..count..)/sum(..count..))), 
+            stat = "count", vjust = -0.25) +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.text.y=element_blank(), axis.ticks=element_blank(),
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) +
+  guides(fill=FALSE) 
+
+```
+
+3 out of 10 loans defaulted in the selected dataset. This is a really high percentage of
+defaulted loans. Lets plot the selected examined variables in the univariate 
+plots section against the "Yes" and "No" categories.
+
+
+```{r echo=FALSE, Date_of_Initiation_vs_Default}
+
+PLD_def_or_no <- mutate(PLD_def_or_no, ListingCreationYear = factor(
+  format(as.Date(PLD_def_or_no$ListingCreationDate), "%Y")))
+
+ggplot(PLD_def_or_no, aes(x = ListingCreationYear, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) 
+
+table(PLD_def_or_no$ListingCreationYear) 
+
+```
+
+It seems that loans that were initiated in 2006 and 2007 had a higher chance of 
+default than loans in other years. As a note keep in mind that for 2005 and 2014 
+there are few loan listings in the dataset (23 and 62 respectively).
+
+Now lets check the credit risk of loan takers against the Defaulted variable. 
+We will combine the CreditGrade and the ProsperRating...Alpha. variables in one 
+new variable called Credit_Risk. As a reminder CreditGrade was applicable for
+loans for the pre-2009 period and ProsperRating...Alpha. for loans after July 
+2009. So combining them let us analyse the credit risk for the whole period 
+covered by our dataset.
+
+
+```{r echo=FALSE, CreditGrade_vs_Default}
+
+# We create a new variable that contains both CreditRating and 
+# ProsperRating...Alpha. records. Keep in mind that we need to use 
+# the following regex expression "\\b word \\b" to avoid mixing up the "C" and
+# "NC" ratings.
+PLD_def_or_no <- mutate(PLD_def_or_no, Credit_Risk = 
+                          as.factor(
+                            if_else(grepl("AA", CreditGrade), "AA",
+                            if_else(grepl("AA", ProsperRating..Alpha.), "AA",       
+                            if_else(grepl("A", CreditGrade), "A",
+                            if_else(grepl("A", ProsperRating..Alpha.), "A",
+                            if_else(grepl("B", CreditGrade), "B",
+                            if_else(grepl("B", ProsperRating..Alpha.), "B",
+                            if_else(grepl("\\bC\\b", CreditGrade), "C",
+                            if_else(grepl("C", ProsperRating..Alpha.), "C",
+                            if_else(grepl("D", CreditGrade), "D",
+                            if_else(grepl("D", ProsperRating..Alpha.), "D",
+                            if_else(grepl("E", CreditGrade), "E",
+                            if_else(grepl("E", ProsperRating..Alpha.), "E",
+                            if_else(grepl("HR", CreditGrade), "HR",
+                            if_else(grepl("HR", ProsperRating..Alpha.), "HR",
+                            if_else(grepl("\\bNC\\b", CreditGrade), "NC",
+                                    "NA")))))))))))))))))
+
+positions_Credit_Risk <- c('AA', 'A', 'B', 'C', 'D', 'E', 'HR', 'NC', 'NA')
+
+ggplot(PLD_def_or_no, aes(x = Credit_Risk, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) +
+  scale_x_discrete(limits = positions_Credit_Risk)
+  
+```
+
+Ok so it is pretty clear that the lower the Credit Risk rating the higher the
+probability of default of a loan taker. 
+
+Is loan duration related to defaults?
+
+```{r echo=FALSE, Term_vs_Default}
+
+ggplot(PLD_def_or_no, aes(x = Term, fill = Defaulted)) + 
+  geom_bar(position = "fill", width = 0.6) +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) 
+
+#We use the descr library to create a contingency table
+CrossTable(PLD_def_or_no$Defaulted, 
+                    PLD_def_or_no$Term, prop.c = TRUE, 
+                    prop.chisq = FALSE, prop.t = FALSE, prop.r = FALSE,
+           format = "SPSS")
+
+```
+
+We can see that 12 months listings have a significant lower default rate than 
+36 and 60 months listings. Keep in mind that 12 months loans represented only 
+2.8% of loans in the dataset. 
+
+Let's see if there is a relation between the loan amount and the default rate.
+
+
+```{r echo=FALSE, Loan_Amount_vs_Default}
+
+ggplot(PLD_def_or_no, aes(x=Defaulted, y=LoanOriginalAmount, fill=Defaulted)) + 
+  geom_violin()  +
+  scale_y_continuous(breaks = seq(0, 35000, 5000)) +
+  scale_fill_manual(values=c("#006600", "#B32B2B"))  +
+  theme(
+      axis.title.y = element_text(face ="bold"),  
+    axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) 
+
+PLD_def_or_no %>% 
+  group_by(Defaulted) %>% 
+  summarise (median = median(LoanOriginalAmount), 
+             mean = mean(LoanOriginalAmount), 
+             standard_dev = sd(LoanOriginalAmount), 
+             IQR = IQR(LoanOriginalAmount))
+
+```
+
+It's not likely that loan amount plays any significant role in the likelihood
+of default according to the above graph and summary statistics. Both violin 
+plots looks pretty similar and their distribution is mainly concentrated below
+$5.000. The only difference that we can easily spot is that there are no loans 
+above $25.000 that had defaulted. 
+
+Let's visualize which listing category had the biggest percentage of default:
+
+
+```{r echo=FALSE, ListingCastegory_vs_Default}
+
+# We create a contingency table
+cont_table_Categ <- CrossTable(PLD_def_or_no$Defaulted, 
+                    PLD_def_or_no$ListingCategory..numeric., prop.c = TRUE, 
+                    prop.chisq = FALSE, prop.t = FALSE, prop.r = FALSE)
+
+# We fetch the percentages for defaulted and non-defaulted loans 
+# from the contingency table
+prop_of_listing_categories <- as.data.frame(cont_table_Categ$prop.col)
+
+# We create a function that renames column names
+rename_columns <- function(dataset, existing_column_name, new_column_name){
+  change_name <- colnames(dataset)[colnames(
+    dataset) == existing_column_name] <- new_column_name
+  return(dataset)
+}
+
+prop_of_listing_categories <- rename_columns(prop_of_listing_categories, "y", 
+                                             "ListingCategory")
+prop_of_listing_categories <- rename_columns(prop_of_listing_categories, "x", 
+                                             "Defaulted")
+
+sorted_listing_categories_No <- 
+  arrange(subset(prop_of_listing_categories, Defaulted == "Yes"), desc(Freq))
+
+ ggplot(sorted_listing_categories_No, aes(x = ListingCategory, y = Freq)) + 
+     geom_bar(stat = "identity", fill = "#B32B2B") +
+     theme(axis.text.x=element_text(angle = 90, hjust = 0)) +
+   scale_x_discrete(limits = get_x_labels(select(
+     sorted_listing_categories_No, ListingCategory, Freq))) +
+   labs(y = "Percentage of Default") 
+  
+```
+
+[Green loans](https://www.prosper.com/plp/loans/loan-types/green-loans/), loans 
+that have undifined loan category and loans for Household Expenses had the 
+higher rate of default.
+
+Following the same procedure as above for occupation categories produces the 
+following three graphs:
+
+```{r echo=FALSE, Occupation_vs_Default}
+
+# We follow the same steps as in the Listing Category code block but this
+# time for the Occupation variable
+
+cont_table_Occ <- CrossTable(PLD_def_or_no$Defaulted, 
+                    PLD_def_or_no$Occupation, prop.c = TRUE, 
+                    prop.chisq = FALSE, prop.t = FALSE, prop.r = FALSE,
+                    format = "SPSS")
+
+prop_of_occupation <- as.data.frame(cont_table_Occ$prop.col)
+
+prop_of_occupation <- rename_columns(prop_of_occupation, "y", 
+                                             "Occupation")
+prop_of_occupation <- rename_columns(prop_of_occupation, "x", 
+                                             "Defaulted")
+
+sorted_occupation_No <- 
+  arrange(subset(prop_of_occupation, Defaulted == "Yes"), desc(Freq))
+ 
+# Creating a function that plots the selected rows of the above dataframe
+occupations_plot <- function(rows_to_plot){
+  my_plot <- ggplot(rows_to_plot, 
+                                aes(x = Occupation, y = Freq)) + 
+  geom_bar(stat = "identity", fill = "#B32B2B") +
+  theme(axis.text.x=element_text(angle = 90, hjust = 0)) +
+  scale_x_discrete(limits = get_x_labels(select(
+    rows_to_plot, Occupation, Freq))) +
+  labs(y = "Percentage of Default") +
+  ylim(0, 0.5)
+  return(my_plot)
+}
+
+# Maybe it's an overkill to plot all three graphs here but otherwise 
+# if we try to fit all categories in one graph the graph becomes unreadable
+
+occupations_plot(sorted_occupation_No[1:23,])
+occupations_plot(sorted_occupation_No[24:46,])
+occupations_plot(sorted_occupation_No[-(1:46),])
+
+```
+
+Realtors and Nurse's Aides had almost a 50% probabibilty of defaulting on their 
+loans! Technical and Community College students came in the third and fourth 
+place with probabibility of default around the 45% mark. No Judge had ever 
+defaulted (but there are only two in the dataset).
+
+What about income range of loan takers?
+
+```{r echo=FALSE, IncomeRange_vs_Default}
+
+ggplot(PLD_def_or_no, aes(x = IncomeRange, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+  scale_x_discrete(limits = positions_IncomeRange)
+
+```
+
+No surprises here. The higher the income the lower the probability of default 
+(except for the $0 category, which we will explore it later on).
+
+Checking if the number of recommendations the borrower had and the number of 
+friends that made an investment in the loan at the time the listing was created 
+are related somehow to the default ratio:
+
+```{r echo=FALSE, Recommendations_InvestmentFromFriendsCount_vs_Default}
+
+Rec_Default <- ggplot(PLD_def_or_no, aes(x = Recommendations, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+  guides(fill=FALSE)
+  
+Inv_Fr_Default <- ggplot(PLD_def_or_no, aes(x = 
+                                              InvestmentFromFriendsCount, 
+                                            fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+  guides(fill=FALSE)
+
+
+grid.arrange(Rec_Default, Inv_Fr_Default, ncol = 2)
+
+```
+
+This is not what someone might expect. Logically larger number of 
+recommendations or investment from friends should produce a lower rate of 
+default. This is not the case in the above two graphs, but nevertheless we 
+should not forget that there are few observations for counts above 2 in both 
+graphs. So it's seems prudent to not make any inference about those two 
+variables.
+
+So let's check if the number of investors reveal any useful insights for the 
+probability of default:
+
+```{r echo=FALSE, results='hide', Split_Investors}
+
+# We will use the classIntervals function from the classInt library to split 
+# the Investors variable in ten approximately equal frequency bins. By doing 
+# this each bin will have enough data points and we will get a more 
+# respresentative picture of the Investors variable. We will use those bins to 
+# create a new variable and plot the data. 
+library(classInt)
+classIntervals(PLD_def_or_no$Investors, 10)
+
+```
+
+
+```{r echo=FALSE, Investors_vs_Default}
+
+PLD_def_or_no <- mutate(PLD_def_or_no, InvestorCount = 
+                           as.factor(
+                             if_else(Investors < 11, "1-10",
+                             if_else(Investors < 25, "11-24",
+                             if_else(Investors < 38, "25-37",
+                             if_else(Investors < 52, "38-51",
+                             if_else(Investors < 69, "53-68",
+                             if_else(Investors < 91, "70-90",
+                             if_else(Investors < 122, "91-121",
+                             if_else(Investors < 166, "123-165",
+                             if_else(Investors < 244, "166-243",
+                             if_else(Investors < 1200, "244-1200",
+                                     "NA"))))))))))))
+
+positions_InvestorCount <- c("1-10", "11-24", "25-37", "38-51", "53-68", 
+                             "70-90", "91-121", "123-165", "166-243",
+                              "244-1200")
+
+ggplot(PLD_def_or_no, aes(x = InvestorCount, fill = Defaulted)) + 
+   geom_bar(position = "fill") +
+   scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+   theme(
+         axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+         axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+    scale_x_discrete(limits = positions_InvestorCount)
+
+```
+
+In the above chart we splitted the investor count data into approximately equal 
+frequency bins to better visualize it. It seems that as the number of 
+investors surpasses 25 the rate of default goes down. It increases again a 
+little bit after 244 investors which seems quite odd.  
+
+Now it's time to have a quick look at possible relationships between the 
+supporting varibles of our analysis.
+Let's see if Investors count is related to Income Range:
+
+```{r echo=FALSE, IncomeRange_vs_Investors}
+
+ ggplot(PLD_def_or_no, aes(x = IncomeRange, y=Investors)) + 
+   geom_boxplot() +
+   scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+   theme(
+         axis.title.y = element_text(face ="bold"), 
+         axis.title.x = element_text(face ="bold"),
+         axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+   scale_x_discrete(limits = positions_IncomeRange)
+
+```
+
+
+We can spot a trend here. The higher the Income Range of the loan taker the 
+higher the number of people willing to invest in a loan, which of course makes 
+sense. But clearly the $0 income range category seems like an outlier..
+
+Is loan amount related to IncomeRange?
+
+```{r echo=FALSE, IncomeRange_vs_LoanOriginalAmount}
+
+ ggplot(PLD_def_or_no, aes(x = IncomeRange, y=LoanOriginalAmount)) + 
+   geom_boxplot() +
+   scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+   theme(
+         axis.title.y = element_text(face ="bold"),
+         axis.title.x = element_text(face ="bold"),
+         axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+   scale_x_discrete(limits = positions_IncomeRange)
+  
+by_incomeRange <- group_by(PLD_def_or_no, IncomeRange)
+mean_loan_amount_per_inc <- summarize(by_incomeRange, 
+                                      mean = mean(LoanOriginalAmount))
+arrange(mean_loan_amount_per_inc, desc(mean))
+
+```
+
+Αs the Income Range gets higher so does the loan amount. But we can see
+that people with $0 income managed to borrow higher amounts on average than 
+people in the income range \$1 to \$74,999 which is totally unexpected. As a 
+first guess we could think that the $0 category is mainly populated by students 
+that use PROSPER to get student loans. 
+Let's see if that's the case:
+
+
+```{r echo=FALSE, Income_Range_0_dollar_ListingCategory_A}
+
+Income_Range_0_dollar_Occupation <-  filter(PLD_def_or_no, 
+                                          IncomeRange == "$0") %>% 
+  count(ListingCategory..numeric.) %>% 
+  arrange(desc(n)) 
+ 
+ggplot(Income_Range_0_dollar_Occupation, 
+       aes(x = ListingCategory..numeric., y = n)) + 
+  geom_bar(stat = "identity") +
+  theme(
+        axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) 
+
+```
+
+Clearly that's not the case. Let's check the year of initiation of those loans:
+
+```{r echo=FALSE, Income_Range_0_dollar_Year}
+
+Income_Range_0_dollar_Year <- filter(PLD_def_or_no, IncomeRange == "$0") %>% 
+  count(ListingCreationYear) %>% 
+  arrange(desc(n)) 
+
+ggplot(Income_Range_0_dollar_Year, 
+       aes(x = ListingCreationYear, y = n)) + 
+  geom_bar(stat = "identity") +
+  theme(
+        axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) 
+ 
+```
+
+Almost all these loans where initiated in the first years of PROSPER
+operation. I believe that the Credit_Risk variable can help us a little bit 
+more here. Let's visualize the credit risk for the \$0 and the \$50,000-74,999:
+
+```{r echo=FALSE, Income_Range_0_dollar_Credit_Risk}
+
+Inc_zero_CredRisk <- filter(PLD_def_or_no, IncomeRange == "$0") %>% 
+  count(Credit_Risk) %>% 
+  arrange(desc(n)) 
+
+Inc_zero_CredRisk <- transform(
+  Inc_zero_CredRisk, percentage = round(n / nrow(
+    filter(PLD_def_or_no, IncomeRange == "$0")) * 100, 1))
+
+Inc_zero_CredRisk_plot <- ggplot(Inc_zero_CredRisk, 
+                                 aes(x = Credit_Risk, y = percentage)) + 
+  geom_bar(stat = "identity") +
+  ggtitle("$0 Income") +
+  theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) +
+  scale_x_discrete(limits = positions_Credit_Risk)
+
+Inc_75_CredRisk <- filter(PLD_def_or_no, IncomeRange == "$50,000-74,999") %>% 
+  count(Credit_Risk) %>% 
+  arrange(desc(n)) 
+
+Inc_75_CredRisk <- transform(
+  Inc_75_CredRisk, percentage = round(n / nrow(
+    filter(PLD_def_or_no, IncomeRange == "$50,000-74,999")) * 100, 1))
+
+Inc_75_CredRisk_plot <- ggplot(Inc_75_CredRisk, 
+                               aes(x = Credit_Risk, y = percentage)) + 
+  geom_bar(stat = "identity") +
+  ggtitle("$50,000-74,999 Income") +
+  theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) +
+  scale_x_discrete(limits = positions_Credit_Risk) +
+  ylim(0, 25)
+
+grid.arrange(Inc_zero_CredRisk_plot, Inc_75_CredRisk_plot, ncol = 2)
+```
+
+The top 3 credit risk ratings of loan takers with $0 income were AA, A and B! 
+But loan takers with income of \$50,000-74,999 had clearly 
+worse ratings...Checking the number of loan takers in each loan category:
+
+
+```{r echo=FALSE, Loan_number_per_Income}
+
+table(PLD_def_or_no$IncomeRange)
+
+```
+
+The number of loan takers in the $0 income category is really low compared to 
+the other income range categories.
+If we check again the listing category of these loans....
+
+```{r echo=FALSE, Income_Range_0_dollar_ListingCategory_B}
+
+Inc_zero_ListCateg <- filter(PLD_def_or_no, IncomeRange == "$0") %>% 
+  count(ListingCategory..numeric.) %>% 
+  arrange(desc(n)) 
+
+transform(Inc_zero_ListCateg, perc = round(n / nrow(filter(
+  PLD_def_or_no, IncomeRange == "$0")) * 100, 1))
+
+
+```
+
+.....we can see that the top two categories are loans that are listed as NA and 
+Business loans. So I think these $0 income loans were initiated on behalf of 
+small companies that needed some quick financing and this was probably allowed 
+in the initial years of PROSPER operation. This probably explains the high 
+ratings, the high mean amount per loan too and the high number of investors 
+willing to invest on these loans. But this is just a hypothesis and we should 
+take it with a grain of salt.
+
+Finally to conclude this section let's have a quick glance in the graph below 
+that depicts the relation between the loan amount and the number of investors: 
+
+```{r echo=FALSE, LoanOriginalAmount_vs_Investors}
+
+ggplot(PLD_def_or_no, aes(x = Investors, y = LoanOriginalAmount)) + 
+  geom_hex(colour = "white") +
+  scale_fill_gradient(low = "white", high = "blue")
+
+round(cor(PLD_def_or_no$Investors, PLD_def_or_no$LoanOriginalAmount), 2)
+
+```
+
+It seems that there is a fairly positive relationship between the two variables.
+Their correlation coefficient is 0.68. 
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+I explored the relationships of the Defaulted variable, which is one of
+the features of interest, with 10 other variables. I found some non-surprising 
+results:
+
+* The higher the credit risk of a loan the higher the chance that will default. 
+* Longer term loans tend to default more often than shorter ones.
+* The higher the income of the loan taker the lower the probability of 
+defaulting in its loan.
+* More investors in a loan usually means lower rate of default.
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+* The higher the income range of a loan taker, more people are willing to 
+invest in his/her loan
+* Αs the income range of a loan taker gets higher, so does the loan amount he 
+borrows.
+* It also seems that the loan amount is positevely correlated with the number
+of investors.
+
+### What was the strongest relationship you found?
+
+All the relationships above look visually strong, but if I had to chose one
+I would say that the realtion between the Credit Risk variable and the 
+probability of default stands out.
+
+# Multivariate Plots Section
+
+
+```{r echo=FALSE, results='hide', Pre_2008_variable_creation}
+
+# We create a new variable that splits the dataset in two time periods
+PLD_def_or_no <- mutate(PLD_def_or_no, Pre_2008 = as.factor(ifelse(
+		(ListingCreationYear %in% c("2005", "2006", "2007", "2008")), "2005-2008", 
+		"2009-2014")))
+
+table(PLD_def_or_no$Pre_2008)
+
+```
+
+As we said before it is interesting to see if loan takers before the financial 
+crisis of 2008 had different behaviour than those after 2008. The dataset 
+contains 29.051 loans for the period 2005-2008 and 26.033 for the period 
+2009-2014. So the data split is almost even (53% - 47%).
+
+
+```{r echo=FALSE, Loan_Status_new_dataset_vs_Pre_2008}
+
+Pre_2008_Default_Rate <- ggplot(filter(PLD_def_or_no, Pre_2008 == "2005-2008"), 
+                                aes(x=Defaulted, fill=Defaulted)) + 
+  scale_x_discrete(limits = positions_Defaulted) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), width = 0.6) +
+  ggtitle("2005-2008") +
+  geom_text(aes(y = ((..count..)/sum(..count..)), 
+                label = scales::percent((..count..)/sum(..count..))), 
+            stat = "count", vjust = -0.25) +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.text.y=element_blank(), axis.ticks=element_blank(),
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) +
+   ylim(0, 1) +
+  guides(fill=FALSE) 
+  
+After_2008_Default_Rate <- ggplot(filter(PLD_def_or_no, Pre_2008 == "2009-2014"), 
+                                  aes(x=Defaulted, fill=Defaulted)) + 
+  scale_x_discrete(limits = positions_Defaulted) +
+  geom_bar(aes(y = (..count..)/sum(..count..)), width = 0.6) +
+  ggtitle("2009-2014") +
+  geom_text(aes(y = ((..count..)/sum(..count..)), 
+                label = scales::percent((..count..)/sum(..count..))), 
+            stat = "count", vjust = -0.25) +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        plot.title = element_text(hjust = 0.5),
+        axis.text.y=element_blank(), axis.ticks=element_blank(),
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) +
+  ylim(0, 1) +
+  guides(fill=FALSE) 
+
+grid.arrange(Pre_2008_Default_Rate, After_2008_Default_Rate, ncol = 2)
+
+```
+
+More that 1/3 loans in 2005-2008 defaulted in the PROSPER platform. PROSPER
+managed to decrease the default ratio below 1/4 in 2009-2014.
+
+```{r echo=FALSE, CreditGrade_vs_Default_vs_Pre_2008}
+
+
+ggplot(PLD_def_or_no, aes(x = Credit_Risk, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) +
+  scale_x_discrete(limits = positions_Credit_Risk) +
+   facet_wrap(~Pre_2008, nrow = 2)
+
+```
+
+It is clear from the above graph that loans created in the aftermath of the 
+[Lehman Brothers](https://en.wikipedia.org/wiki/Bankruptcy_of_Lehman_Brothers)
+bankruptcy had a substantially lower default rate across all credit risk
+categories than loans in the period 2009-2014.
+
+```{r echo=FALSE, IncomeRange_vs_Default_vs_Pre_2008}
+
+ggplot(PLD_def_or_no, aes(x = IncomeRange, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+  scale_x_discrete(limits = positions_IncomeRange) + 
+  facet_wrap(~Pre_2008, nrow = 2)
+
+
+```
+
+The above graph reveals that income range was negatively correlated with the 
+default rate for loans after 2009. For loans before the financial crisis the 
+correlation is present but it is much smaller.
+
+
+```{r echo=FALSE, Investors_vs_Default_vs_Pre_2008}
+
+ggplot(PLD_def_or_no, aes(x = InvestorCount, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+  scale_x_discrete(limits = positions_InvestorCount) +
+  facet_wrap(~Pre_2008, nrow = 2)
+
+```
+
+The same pattern as with the income range is spotted to a lesser extent with the
+number of investors. More than 68 investors per loan signifies a lower rate of 
+default for the second period. This relation holds true for all categories in 
+the first period up until 244 investors.
+
+```{r echo=FALSE, Occupation_vs_Default_vs_Pre_2008}
+
+# The concept in this code block is to create a dataframe that
+# contains the default rate and count for every occupation for both periods.
+# We create the initial dataframe that contains all the info we want:
+initial_occupation_default_dataframe <- 
+  PLD_def_or_no %>% 
+  group_by(Occupation, Pre_2008, Defaulted) %>% 
+  summarise(count_n = n()) %>% 
+  mutate(freq = count_n / sum(count_n))
+
+# We need to do some extra steps in order to get the data in the appropriate 
+# format before using ggplot.
+# Fetch the data for the first period:
+Occupation_Default_2005_2008 <- filter(
+  initial_occupation_default_dataframe, 
+  c(Pre_2008 == "2005-2008" & Defaulted == "Yes"))
+# Drop unwanted columns:
+Occupation_Default_2005_2008 <- subset(Occupation_Default_2005_2008, 
+                                        select = -c(Pre_2008, Defaulted))
+# Rename columns:
+Occupation_Default_2005_2008 <- rename_columns(
+   Occupation_Default_2005_2008, 'count_n', "count_2005_2008")
+Occupation_Default_2005_2008 <- rename_columns(
+  Occupation_Default_2005_2008, "freq", "Perc_Def_05_08")
+ 
+# We do the above steps for the second period:
+Occupation_Default_2009_2014 <- filter(
+  initial_occupation_default_dataframe, 
+  c(Pre_2008 == "2009-2014" & Defaulted == "Yes"))
+# Drop unwanted columns:
+Occupation_Default_2009_2014 <- subset(Occupation_Default_2009_2014, 
+                                        select = -c(Pre_2008, Defaulted))
+# Rename columns:
+Occupation_Default_2009_2014 <- rename_columns(
+   Occupation_Default_2009_2014, 'count_n', "count_2009_2014")
+Occupation_Default_2009_2014 <- rename_columns(
+  Occupation_Default_2009_2014, "freq", "Perc_Def_09_14")
+ 
+Occupations_by_period <- merge(Occupation_Default_2005_2008, 
+                               Occupation_Default_2009_2014, 
+                               by = "Occupation")
+
+# We will add a column that calculates the percentage difference of default 
+# between the two periods
+Occupations_by_period <- mutate(Occupations_by_period, 
+                                Percentage_Diff = 
+                                  round((Perc_Def_09_14 - Perc_Def_05_08) 
+                                        * 100, 1))
+# Sort by percentage difference
+Occupations_by_period <- arrange(Occupations_by_period, Percentage_Diff)
+
+# We will examine only occupations that had more than 50 defaults in each period
+Occupations_by_period <- filter(Occupations_by_period, 
+                                c(count_2005_2008 > 50 & count_2009_2014 > 50))
+
+# Showing only only the percentage difference (I leave it for the reviewer)
+# subset(Occupations_by_period, select = c(Occupation, Percentage_Diff))
+
+top_occup_by_default_rate_improv <- 
+  filter(PLD_def_or_no, 
+         Occupation == 'Construction' |
+         Occupation == 'Clerical' |
+         Occupation == 'Truck Driver' |
+         Occupation == 'Executive' |
+         Occupation == 'Sales - Commission' |
+         Occupation == 'Police Officer/Correction Officer' |
+         Occupation == 'Food Service Management' |
+         Occupation == 'Professional') 
+
+positions_Top_Occupations <- c('Construction', 'Clerical', 'Truck Driver', 
+                              'Executive', 'Sales - Commission', 
+                              'Police Officer/Correction Officer', 
+                              'Food Service Management', 'Professional')
+
+
+ggplot(top_occup_by_default_rate_improv, aes(x = Occupation, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        axis.title.y=element_blank(), axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold")) +
+  scale_x_discrete(labels=c("Sales - Commission" = "Sales", 
+                            "Police Officer/Correction Officer" = "Police Off.",
+                              "Food Service Management" = "Food Serv."), 
+                   limits = positions_Top_Occupations) +
+  facet_wrap(~Pre_2008, nrow = 2)
+
+```
+
+In the above table we can see the loan takers occupations which had the biggest 
+improvement in terms of default rate percentage in the period 2009-2014, when 
+compared to 2005-2008. In order to exclude categories with few observations we 
+had included only professions for which there are at least 50 default cases 
+in both periods. Loan takers from the construction industry had the biggest
+improvement, which makes sense since the construction industry was one of the
+most severely hit industries by the financial crisis. The other category that is 
+worth mentioning is the Executive occupatiom which sound really vague 
+considering the fact that almost half the loan takers with this occupation title
+defaulted on their loan during 2005-2008.
+
+```{r echo=FALSE, ListingCategory_vs_Default_vs_Pre_2008}
+
+ggplot(PLD_def_or_no, aes(x = ListingCategory..numeric., fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+   theme(
+         axis.title.y = element_blank(),
+         axis.title.x = element_text(face ="bold"),
+         axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+    facet_wrap( ~ Pre_2008, nrow = 2)
+
+```
+
+In the above graph we can notice that PROSPER added several loan categories 
+after 2009, but excluded the personal loan category from its listings. 
+
+```{r echo=FALSE, Top_5_Occupation_vs_Default_vs_Pre_2008jgfdkjgkfd}
+
+ggplot(PLD_def_or_no, aes(x=IncomeRange, y=LoanOriginalAmount, fill=Defaulted)) + 
+  geom_boxplot()  +
+  scale_y_continuous(breaks = seq(0, 35000, 5000)) +
+  scale_fill_manual(values=c("#006600", "#B32B2B"))  +
+  theme(
+       axis.title.y = element_text(face ="bold"),
+        axis.title.x = element_text(face ="bold"),
+        axis.text.x = element_text(face ="bold", angle = 90, hjust = 0)) +
+  scale_x_discrete(limits = positions_IncomeRange) + 
+    facet_wrap( ~ Pre_2008, nrow = 2)
+
+    
+```
+
+The above graph reveals that defaulted loans in period 2005-2008 had a larger 
+range of listing amounts in most income categories. This pattern isn't visible 
+in the period 2009-2014.
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+Splitting the data in two time periods revealed some interesting relationships 
+between the examined variables. The rate of default was substantially lower in 
+2009-2014 compared to 2005-2008. Default rates were lower across all credit risk 
+categories compared to the period 2005-2008 and income range of loan takers 
+seemed to infuence a lot more the deafult rate after 2009. Also we discovered 
+that PROSPER added new listing categories after 2009.
+
+### Were there any interesting or surprising interactions between features?
+
+When plotting loan amount vs income range for both periods it was somewhat 
+unexpected that defaulted loans in the first period had a larger range of 
+listing amounts in most income categories. We will try to explain this 
+observation in the next section.
+
+# Final Plots and Summary
+
+### Plot One
+
+```{r echo=FALSE, Plot_One}
+
+
+positions_Credit_Risk_no_NA_NC <- c('AA', 'A', 'B', 'C', 'D', 'E', 'HR')
+replace_facet_titles <- c("2005-2008" = "2005 - 2008",
+                          "2009-2014" = "2009 - 2014")
+
+# We exclude th NA and NC categories
+ggplot(filter(PLD_def_or_no, Credit_Risk != "NC" & Credit_Risk != "NA"), 
+       aes(x = Credit_Risk, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+        axis.title.y = element_blank(), 
+        axis.text.y = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        axis.text.x = element_text(face = "bold"),
+        strip.text.x = element_text(size = 11, face = "bold")) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(limits = positions_Credit_Risk_no_NA_NC) +
+   facet_wrap(~Pre_2008, nrow = 2, 
+              labeller = as_labeller(replace_facet_titles)) +
+  ggtitle(
+    "Loan Deafult ratio by Credit Risk category in PROSPER lending platform") +
+  xlab("Credit risk")
+
+# I leave it for the reviewer:
+# table(PLD_def_or_no$Credit_Risk, PLD_def_or_no$Pre_2008)
+# 116 + 15 + 141
+# 272/55084
+
+```
+
+### Description One
+
+I believe the above graph is self-explanatory. It shows that PROSPER made its 
+credit risk system stricter from 2009 and onwards. Despite the abysmal 
+performance of loan takers in 2005-2008, the graph shows that PROSPER managed to
+correctly seperate loan takers into different credit risk categories in 
+2005-2008 because the default rate exhibits a ladder pattern as in 2009-2014. 
+But the main problem in the period 2005-2008 is that PROSPER failed to 
+exclude certain loan takers from taking a loan in the first place. It is not
+reasonable to allow people taking a loan if their probability of default is 
+close or above 50% (i.e. categories E and HR in 2005-2008). This is of course an 
+ex post info but given the fact that the first period covers 3 years I believe
+there was enough time for PROSPER to adjust its credit risk policy. To PROSPER 
+defence we can say that when a company starts operations it is inevidable that 
+some things may go south. We shouldn't also forget that there is always a need 
+for new customers for newly established companies. Furthermore the [financial crisis](https://en.wikipedia.org/wiki/Financial_crisis_of_2007%E2%80%932008) 
+that hit the world economy in 2007-2008 certainly played it's role to the far 
+than stellar performance of loan takers in 2005-2008.
+
+Plz note that in the above graph we dropped the NC (No Credit) and NA 
+(Not Available) credit risk categories for better representing the data 
+(they contain only 272 observations, 0.5% of all observations).
+
+### Plot Two
+```{r echo=FALSE, Plot_Two}
+
+
+replace_income_range_labels <- c("$1-24,999" = "$1-25k", 
+                            "$25,000-49,999" = "$25k-50k",
+                            "$50,000-74,999" = "$50k-75k",
+                            "$75,000-99,999" = "$75k-100k",
+                            "$100,000+" = "$100k+",
+                            "Not employed" = "Not empl.",
+                            "Not displayed" = "Not displ.")
+
+ggplot(PLD_def_or_no, aes(x = IncomeRange, fill = Defaulted)) + 
+  geom_bar(position = "fill") +
+  scale_fill_manual(values = c("Yes" = "#B32B2B", "No" = "#006600")) +
+  theme(
+        plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+        axis.title.y = element_blank(), 
+        axis.text.y = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        axis.text.x = element_text(face = "bold"),
+        strip.text.x = element_text(size = 11, face = "bold")) +
+  scale_y_continuous(labels = scales::percent) +
+  scale_x_discrete(limits = positions_IncomeRange, 
+                   labels= replace_income_range_labels) + 
+  facet_wrap(~Pre_2008, nrow = 2, 
+             labeller = as_labeller(replace_facet_titles)) +
+  ggtitle(
+    "Loan Deafult ratio by Income category in PROSPER lending platform") +
+  xlab("Income range")
+
+# I leave it for the reviewer:
+# table(PLD_def_or_no$IncomeRange, PLD_def_or_no$Pre_2008)
+# 116 + 15 + 141
+# 272/55084
+
+
+```
+
+### Description Two
+
+Several things can be noticed in the above graph. First of all it seems that 
+after 2009 there was no option for a loan taker to not display his/her income. 
+Probably this happened because during the period 2005-2008 this income range 
+category had the highest rate of default. Secondly the default ratio is highly 
+correlated with income range in 2009-20014. This is not the case in 2005-2008 
+where the drop in default rate as income range increases not so visually strong.
+We can make two hypothesis for this observation: either the effect of the 
+financial crisis hit all income categories to the same extent (which I think 
+is highly unlikely) or PROSPER didn't have a mechanism to verify the stated 
+income of loan takers and loan takers took advantage of it. I think this last
+hypothesis is further supported by the fact that the "Not employed" category had 
+the smallest default rate in 2005-2008 (which doesn't make sense), but in 
+2009-2014 it had the largest one.
+
+### Plot Three
+```{r echo=FALSE, Plot_Three}
+
+ggplot(PLD_def_or_no, aes(x=IncomeRange, y=LoanOriginalAmount, fill=Defaulted)) + 
+  geom_boxplot()  +
+  scale_y_continuous(breaks = seq(0, 35000, 5000)) +
+  scale_fill_manual(values=c("#006600", "#B32B2B"))  +
+  theme(
+        plot.title = element_text(hjust = 0.5, size = 12, face = "bold"),
+        axis.title.y = element_text(face = "bold"),
+        axis.text.y = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        axis.text.x = element_text(face = "bold"),
+        strip.text.x = element_text(size = 11, face = "bold")) +
+  scale_x_discrete(limits = positions_IncomeRange, 
+                   labels = replace_income_range_labels) + 
+    facet_wrap( ~ Pre_2008, nrow = 2, 
+                labeller = as_labeller(replace_facet_titles)) +
+  ggtitle(
+    "Loan amount distributions by Income range in PROSPER lending platform") +
+  xlab("Income range") +
+  ylab("Loan amount")
+
+```
+
+### Description Three
+
+In the last plot we can easily spot a trend: as income range grows so does the
+loan amount. But the \$0 category seems to brake this trend because it's 
+distribution of loan amounts lies above the income category $1-25k category.
+As it was analysed during the bivariate plots section the $0 income loans are 
+few, they are mainly concentrated in 2007 and 2008 and they are probably loans 
+on behalf of small companies, so we can ignore them in this graph. 
+
+Another issue that is visible is that the distribution of defaulted loans during 
+2005-2008 is more spread out than non defaulted loans across several income 
+categories. This isn't something to be expected. In general every bank that 
+lends money takes heavily into consideration the income of each loan taker 
+before giving a loan. This isn't inline with what is seen in the graph of 
+2005-2008. We should note that this tendancy was evaporated in the period 
+2009-2014.
+
+A final observation about the above graph is that as income range increase loan
+range amount increseases also.
+
+# Reflection
+
+Exploring the PROSPER loan dataset was really interesting. I discovered many
+insights about the peer-to-peer lending which I wasn't aware of. In fact this
+type of lending in Europe is not at all common. The main difficulties that I 
+encountered during this project were related to the variable selection that I 
+did. I wanted to explore the categorical variables of this dataset mainly
+because I haven't been exposed to this type of data analysis in the past and 
+learning to do so would be useful.
+
+The most common pattern throught out this dataset exploration is that PROSPER 
+had a difficult time during the first years of it's operation and a part of it 
+can be attributed to the financial crisis that unfolded after 2008. Nevertheless, 
+it seems that their credit rating system wasn't at all optimal because more than 
+1/3 of their loans defaulted during 2005-2008. So it is not strange that the SEC 
+imposed a cease and desist order on PROSPER from the end of November 2008 till 
+July 2009. Moving after the SEC order PROSPER managed to fix its credit rating
+system and the default rates were normalised to fairly acceptable rates.
+
+To this end adding a model that forecasts which loans will default on the 
+PROSPER platform is certainly feasible. We could use the variables that were 
+explored in this project and seemed to be related with the default ratio. This 
+is something that I will definetely try to do in the future.
+
+
+
+
+
+

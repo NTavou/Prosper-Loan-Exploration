@@ -1,0 +1,12 @@
+https://docs.google.com/spreadsheets/d/1gDyi_L4UvIrLTEC6Wri5nbaMmkGmLQBk-Yx3z0XDEtI/edit#gid=0
+https://stackoverflow.com/questions/5208679/order-bars-in-ggplot2-bar-graph
+https://www.prosper.com/plp/invest/prosper-ratings/
+https://stackoverflow.com/questions/36615769/is-there-an-alternative-to-revalue-function-from-plyr-when-using-dplyr
+http://www.investopedia.com/terms/d/debtconsolidation.asp
+https://stackoverflow.com/questions/26114525/r-how-to-count-how-many-values-per-level-in-a-given-factor
+https://stackoverflow.com/questions/2551921/show-frequencies-along-with-barplot-in-ggplot2
+https://stackoverflow.com/questions/3695497/show-instead-of-counts-in-charts-of-categorical-variables
+https://stackoverflow.com/questions/35618260/removing-legend-ggplot-2-2
+https://stackoverflow.com/questions/6528258/complete-word-matching-using-grepl-in-r
+https://stackoverflow.com/questions/4605206/drop-data-frame-columns-by-name
+https://stackoverflow.com/questions/24576515/relative-frequencies-proportions-with-dplyr

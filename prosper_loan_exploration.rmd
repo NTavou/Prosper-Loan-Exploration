@@ -1201,9 +1201,6 @@ Occupations_by_period <- arrange(Occupations_by_period, Percentage_Diff)
 Occupations_by_period <- filter(Occupations_by_period, 
                                 c(count_2005_2008 > 50 & count_2009_2014 > 50))
 
-# Showing only only the percentage difference (I leave it for the reviewer)
-# subset(Occupations_by_period, select = c(Occupation, Percentage_Diff))
-
 top_occup_by_default_rate_improv <- 
   filter(PLD_def_or_no, 
          Occupation == 'Construction' |
@@ -1331,11 +1328,6 @@ ggplot(filter(PLD_def_or_no, Credit_Risk != "NC" & Credit_Risk != "NA"),
     "Loan Deafult ratio by Credit Risk category in PROSPER lending platform") +
   xlab("Credit risk")
 
-# I leave it for the reviewer:
-# table(PLD_def_or_no$Credit_Risk, PLD_def_or_no$Pre_2008)
-# 116 + 15 + 141
-# 272/55084
-
 ```
 
 ### Description One
@@ -1391,12 +1383,6 @@ ggplot(PLD_def_or_no, aes(x = IncomeRange, fill = Defaulted)) +
   ggtitle(
     "Loan Deafult ratio by Income category in PROSPER lending platform") +
   xlab("Income range")
-
-# I leave it for the reviewer:
-# table(PLD_def_or_no$IncomeRange, PLD_def_or_no$Pre_2008)
-# 116 + 15 + 141
-# 272/55084
-
 
 ```
 
